@@ -46,7 +46,7 @@ func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis 
 		errc <- p2p.Send(p.rw, StatusMsg, &StatusPacket{
 			ProtocolVersion: uint32(p.version),
 			NetworkID:       network,
-			TD:              td,
+			TD:              downloaderExperimentAdvertisedTD(p, network, td),
 			Head:            head,
 			Genesis:         genesis,
 			ForkID:          forkID,

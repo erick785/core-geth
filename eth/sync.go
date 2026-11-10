@@ -19,6 +19,8 @@ package eth
 import (
 	"errors"
 	"math/big"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -31,9 +33,14 @@ import (
 )
 
 const (
-	forceSyncCycle      = 10 * time.Second // Time interval to force syncs, even if few peers are available
-	defaultMinSyncPeers = 5                // Amount of peers desired to start syncing
+	forceSyncCycle               = 10 * time.Second // Time interval to force syncs, even if few peers are available
+	defaultMinSyncPeers          = 5                // Amount of peers desired to start syncing
+	downloadExperimentObserveEnv = "CORE_GETH_DOWNLOADER_EXPERIMENT_OBSERVE_SYNC"
 )
+
+func downloaderExperimentObservesSync() bool {
+	return strings.TrimSpace(os.Getenv(downloadExperimentObserveEnv)) == "1"
+}
 
 var (
 	// minArtificialFinalityPeers defines the minimum number of peers our node must be connected
@@ -220,6 +227,9 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	}
 	mode, ourTD := cs.modeAndLocalHead()
 	op := peerToSyncOp(mode, peer)
+	if downloaderExperimentObservesSync() {
+		log.Info("[DL-ATTACK-EXP] sync_candidate", "peer", peer.ID(), "head", op.head, "td", op.td, "localTD", ourTD)
+	}
 	if op.td.Cmp(ourTD) <= 0 {
 		// We seem to be in sync according to the legacy rules. In the merge
 		// world, it can also mean we're stuck on the merge block, waiting for
@@ -289,7 +299,14 @@ func (cs *chainSyncer) startSync(op *chainSyncOp) {
 // doSync synchronizes the local blockchain with a remote peer.
 func (h *handler) doSync(op *chainSyncOp) error {
 	// Run the sync cycle, and disable snap sync if we're past the pivot block
+	syncStart := time.Now()
+	if downloaderExperimentObservesSync() {
+		log.Info("[DL-ATTACK-EXP] sync_start", "peer", op.peer.ID(), "mode", op.mode, "head", op.head, "td", op.td)
+	}
 	err := h.downloader.LegacySync(op.peer.ID(), op.head, op.td, h.chain.Config().GetEthashTerminalTotalDifficulty(), op.mode)
+	if downloaderExperimentObservesSync() {
+		log.Info("[DL-ATTACK-EXP] sync_end", "peer", op.peer.ID(), "elapsed", time.Since(syncStart), "err", err)
+	}
 	if err != nil {
 		return err
 	}
